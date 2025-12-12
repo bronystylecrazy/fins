@@ -515,3 +515,181 @@ func TestMemoryAreaChecks(t *testing.T) {
 	assert.False(t, checkIsBitMemoryArea(MemoryAreaDMWord))
 	assert.False(t, checkIsBitMemoryArea(0xFF))
 }
+
+func TestAutoReconnectDisabledByDefault(t *testing.T) {
+	clientAddr, plcAddr := getTestAddresses(t)
+
+	s, e := NewPLCSimulator(plcAddr)
+	if e != nil {
+		panic(e)
+	}
+	defer s.Close()
+
+	c, e := NewClient(clientAddr, plcAddr)
+	if e != nil {
+		panic(e)
+	}
+	defer c.Close()
+
+	// Auto-reconnect should be disabled by default
+	c.reconnectMutex.RLock()
+	assert.False(t, c.autoReconnect)
+	c.reconnectMutex.RUnlock()
+
+	// Not reconnecting initially
+	assert.False(t, c.IsReconnecting())
+}
+
+func TestEnableDisableAutoReconnect(t *testing.T) {
+	clientAddr, plcAddr := getTestAddresses(t)
+
+	s, e := NewPLCSimulator(plcAddr)
+	if e != nil {
+		panic(e)
+	}
+	defer s.Close()
+
+	c, e := NewClient(clientAddr, plcAddr)
+	if e != nil {
+		panic(e)
+	}
+	defer c.Close()
+
+	// Enable auto-reconnect
+	c.EnableAutoReconnect(5, 100*time.Millisecond)
+
+	c.reconnectMutex.RLock()
+	assert.True(t, c.autoReconnect)
+	assert.Equal(t, 5, c.maxReconnect)
+	assert.Equal(t, 100*time.Millisecond, c.reconnectDelay)
+	c.reconnectMutex.RUnlock()
+
+	// Disable auto-reconnect
+	c.DisableAutoReconnect()
+
+	c.reconnectMutex.RLock()
+	assert.False(t, c.autoReconnect)
+	c.reconnectMutex.RUnlock()
+}
+
+func TestShutdownStopsReconnection(t *testing.T) {
+	clientAddr, plcAddr := getTestAddresses(t)
+
+	s, e := NewPLCSimulator(plcAddr)
+	if e != nil {
+		panic(e)
+	}
+	defer s.Close()
+
+	c, e := NewClient(clientAddr, plcAddr)
+	if e != nil {
+		panic(e)
+	}
+
+	// Enable auto-reconnect
+	c.EnableAutoReconnect(5, 100*time.Millisecond)
+
+	c.reconnectMutex.RLock()
+	assert.True(t, c.autoReconnect)
+	c.reconnectMutex.RUnlock()
+
+	// Shutdown should disable auto-reconnect and close
+	err := c.Shutdown()
+	assert.Nil(t, err)
+
+	// Auto-reconnect should be disabled
+	c.reconnectMutex.RLock()
+	assert.False(t, c.autoReconnect)
+	c.reconnectMutex.RUnlock()
+
+	// Client should be closed
+	assert.True(t, c.IsClosed())
+}
+
+func TestOperationsWaitForConnection(t *testing.T) {
+	ctx := context.Background()
+	clientAddr, plcAddr := getTestAddresses(t)
+
+	s, e := NewPLCSimulator(plcAddr)
+	if e != nil {
+		panic(e)
+	}
+	defer s.Close()
+
+	c, e := NewClient(clientAddr, plcAddr)
+	if e != nil {
+		panic(e)
+	}
+	defer c.Close()
+
+	// Normal operation should work immediately (connection is ready)
+	toWrite := []uint16{1, 2, 3}
+	err := c.WriteWords(ctx, MemoryAreaDMWord, 100, toWrite)
+	assert.Nil(t, err)
+
+	vals, err := c.ReadWords(ctx, MemoryAreaDMWord, 100, 3)
+	assert.Nil(t, err)
+	assert.Equal(t, toWrite, vals)
+}
+
+func TestOperationsRespectContextDuringWait(t *testing.T) {
+	clientAddr, plcAddr := getTestAddresses(t)
+
+	s, e := NewPLCSimulator(plcAddr)
+	if e != nil {
+		panic(e)
+	}
+	defer s.Close()
+
+	c, e := NewClient(clientAddr, plcAddr)
+	if e != nil {
+		panic(e)
+	}
+	defer c.Close()
+
+	// Manually mark as disconnected to simulate reconnection
+	c.connectedMutex.Lock()
+	c.connected = make(chan struct{}) // Not closed = disconnected
+	c.connectedMutex.Unlock()
+
+	// Create context with very short timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+
+	// Operation should fail with context deadline exceeded
+	_, err := c.ReadWords(ctx, MemoryAreaDMWord, 100, 5)
+	assert.Error(t, err)
+	assert.Equal(t, context.DeadlineExceeded, err)
+}
+
+func TestWaitForConnectionReturnsOnClientClose(t *testing.T) {
+	clientAddr, plcAddr := getTestAddresses(t)
+
+	s, e := NewPLCSimulator(plcAddr)
+	if e != nil {
+		panic(e)
+	}
+	defer s.Close()
+
+	c, e := NewClient(clientAddr, plcAddr)
+	if e != nil {
+		panic(e)
+	}
+
+	// Manually mark as disconnected to simulate reconnection
+	c.connectedMutex.Lock()
+	c.connected = make(chan struct{}) // Not closed = disconnected
+	c.connectedMutex.Unlock()
+
+	// Close client in a goroutine after a short delay
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		c.Close()
+	}()
+
+	// Operation should fail with ClientClosedError
+	ctx := context.Background()
+	_, err := c.ReadWords(ctx, MemoryAreaDMWord, 100, 5)
+	assert.Error(t, err)
+	assert.IsType(t, ClientClosedError{}, err)
+}

@@ -72,6 +72,21 @@ The client supports automatic reconnection with exponential backoff:
 	// Graceful shutdown (stops reconnection attempts)
 	defer client.Shutdown()
 
+When auto-reconnect is enabled, Read/Write operations will wait for the connection
+to be restored. Operations respect context timeouts - if the context expires before
+reconnection completes, the operation returns with context.DeadlineExceeded:
+
+	client.EnableAutoReconnect(5, 1*time.Second)
+
+	// This waits up to 10 seconds for connection
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	data, err := client.ReadWords(ctx, fins.MemoryAreaDMWord, 100, 5)
+	if err == context.DeadlineExceeded {
+		log.Println("Operation timed out waiting for connection")
+	}
+
 # Context Support
 
 All read/write operations accept a context.Context parameter for:

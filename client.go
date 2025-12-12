@@ -50,6 +50,8 @@ type Client struct {
 	reconnectDelay   time.Duration
 	reconnecting     bool
 	reconnectMutex   sync.RWMutex
+	connected        chan struct{} // Closed when connected, recreated when disconnected
+	connectedMutex   sync.Mutex
 }
 
 // NewClient creates a new Omron FINS client
@@ -69,6 +71,7 @@ func NewClient(localAddr, plcAddr Address) (*Client, error) {
 	c.autoReconnect = false
 	c.maxReconnect = DEFAULT_MAX_RECONNECT
 	c.reconnectDelay = DEFAULT_RECONNECT_DELAY
+	c.connected = make(chan struct{})
 
 	conn, err := net.DialUDP("udp", localAddr.UdpAddress, plcAddr.UdpAddress)
 	if err != nil {
@@ -78,6 +81,10 @@ func NewClient(localAddr, plcAddr Address) (*Client, error) {
 
 	c.resp = make([]chan response, MAX_SERVICE_ID_COUNT)
 	go c.listenLoop()
+
+	// Signal that we're connected
+	close(c.connected)
+
 	return c, nil
 }
 
@@ -167,6 +174,29 @@ func (c *Client) Shutdown() error {
 	return c.Close()
 }
 
+// waitForConnection waits for the connection to be ready, respecting context
+func (c *Client) waitForConnection(ctx context.Context) error {
+	if c.IsClosed() {
+		return ClientClosedError{}
+	}
+
+	c.connectedMutex.Lock()
+	connChan := c.connected
+	c.connectedMutex.Unlock()
+
+	select {
+	case <-connChan:
+		// Connection is ready
+		return nil
+	case <-ctx.Done():
+		// Context expired
+		return ctx.Err()
+	case <-c.done:
+		// Client is being closed
+		return ClientClosedError{}
+	}
+}
+
 // reconnect attempts to reconnect to the PLC with exponential backoff
 func (c *Client) reconnect() error {
 	c.reconnectMutex.Lock()
@@ -234,6 +264,12 @@ func (c *Client) reconnect() error {
 		// Update connection
 		c.conn = conn
 
+		// Create new connected channel and close it to signal connection is ready
+		c.connectedMutex.Lock()
+		c.connected = make(chan struct{})
+		close(c.connected)
+		c.connectedMutex.Unlock()
+
 		// Restart listen loop
 		go c.listenLoop()
 
@@ -243,9 +279,11 @@ func (c *Client) reconnect() error {
 
 // ReadWords reads words from the PLC data area
 func (c *Client) ReadWords(ctx context.Context, memoryArea byte, address uint16, readCount uint16) ([]uint16, error) {
-	if c.IsClosed() {
-		return nil, ClientClosedError{}
+	// Wait for connection to be ready
+	if err := c.waitForConnection(ctx); err != nil {
+		return nil, err
 	}
+
 	if checkIsWordMemoryArea(memoryArea) == false {
 		return nil, IncompatibleMemoryAreaError{memoryArea}
 	}
@@ -266,9 +304,11 @@ func (c *Client) ReadWords(ctx context.Context, memoryArea byte, address uint16,
 
 // ReadBytes reads bytes from the PLC data area
 func (c *Client) ReadBytes(ctx context.Context, memoryArea byte, address uint16, readCount uint16) ([]byte, error) {
-	if c.IsClosed() {
-		return nil, ClientClosedError{}
+	// Wait for connection to be ready
+	if err := c.waitForConnection(ctx); err != nil {
+		return nil, err
 	}
+
 	if checkIsWordMemoryArea(memoryArea) == false {
 		return nil, IncompatibleMemoryAreaError{memoryArea}
 	}
@@ -297,9 +337,11 @@ func (c *Client) ReadString(ctx context.Context, memoryArea byte, address uint16
 
 // ReadBits reads bits from the PLC data area
 func (c *Client) ReadBits(ctx context.Context, memoryArea byte, address uint16, bitOffset byte, readCount uint16) ([]bool, error) {
-	if c.IsClosed() {
-		return nil, ClientClosedError{}
+	// Wait for connection to be ready
+	if err := c.waitForConnection(ctx); err != nil {
+		return nil, err
 	}
+
 	if checkIsBitMemoryArea(memoryArea) == false {
 		return nil, IncompatibleMemoryAreaError{memoryArea}
 	}
@@ -320,9 +362,11 @@ func (c *Client) ReadBits(ctx context.Context, memoryArea byte, address uint16, 
 
 // ReadClock reads the PLC clock
 func (c *Client) ReadClock(ctx context.Context) (*time.Time, error) {
-	if c.IsClosed() {
-		return nil, ClientClosedError{}
+	// Wait for connection to be ready
+	if err := c.waitForConnection(ctx); err != nil {
+		return nil, err
 	}
+
 	r, e := c.sendCommand(ctx, clockReadCommand())
 	e = checkResponse(r, e)
 	if e != nil {
@@ -350,9 +394,11 @@ func (c *Client) ReadClock(ctx context.Context) (*time.Time, error) {
 
 // WriteWords writes words to the PLC data area
 func (c *Client) WriteWords(ctx context.Context, memoryArea byte, address uint16, data []uint16) error {
-	if c.IsClosed() {
-		return ClientClosedError{}
+	// Wait for connection to be ready
+	if err := c.waitForConnection(ctx); err != nil {
+		return err
 	}
+
 	if checkIsWordMemoryArea(memoryArea) == false {
 		return IncompatibleMemoryAreaError{memoryArea}
 	}
@@ -368,9 +414,11 @@ func (c *Client) WriteWords(ctx context.Context, memoryArea byte, address uint16
 
 // WriteString writes a string to the PLC data area
 func (c *Client) WriteString(ctx context.Context, memoryArea byte, address uint16, s string) error {
-	if c.IsClosed() {
-		return ClientClosedError{}
+	// Wait for connection to be ready
+	if err := c.waitForConnection(ctx); err != nil {
+		return err
 	}
+
 	if checkIsWordMemoryArea(memoryArea) == false {
 		return IncompatibleMemoryAreaError{memoryArea}
 	}
@@ -384,9 +432,11 @@ func (c *Client) WriteString(ctx context.Context, memoryArea byte, address uint1
 
 // WriteBytes writes bytes array to the PLC data area
 func (c *Client) WriteBytes(ctx context.Context, memoryArea byte, address uint16, b []byte) error {
-	if c.IsClosed() {
-		return ClientClosedError{}
+	// Wait for connection to be ready
+	if err := c.waitForConnection(ctx); err != nil {
+		return err
 	}
+
 	if checkIsWordMemoryArea(memoryArea) == false {
 		return IncompatibleMemoryAreaError{memoryArea}
 	}
@@ -396,9 +446,11 @@ func (c *Client) WriteBytes(ctx context.Context, memoryArea byte, address uint16
 
 // WriteBits writes bits to the PLC data area
 func (c *Client) WriteBits(ctx context.Context, memoryArea byte, address uint16, bitOffset byte, data []bool) error {
-	if c.IsClosed() {
-		return ClientClosedError{}
+	// Wait for connection to be ready
+	if err := c.waitForConnection(ctx); err != nil {
+		return err
 	}
+
 	if checkIsBitMemoryArea(memoryArea) == false {
 		return IncompatibleMemoryAreaError{memoryArea}
 	}
@@ -444,6 +496,11 @@ func (c *Client) ToggleBit(ctx context.Context, memoryArea byte, address uint16,
 }
 
 func (c *Client) bitTwiddle(ctx context.Context, memoryArea byte, address uint16, bitOffset byte, value byte) error {
+	// Wait for connection to be ready
+	if err := c.waitForConnection(ctx); err != nil {
+		return err
+	}
+
 	if checkIsBitMemoryArea(memoryArea) == false {
 		return IncompatibleMemoryAreaError{memoryArea}
 	}
@@ -551,6 +608,11 @@ func (c *Client) listenLoop() {
 				// Expected closure, exit gracefully
 				return
 			default:
+				// Mark as disconnected
+				c.connectedMutex.Lock()
+				c.connected = make(chan struct{}) // Create new channel (not closed = not connected)
+				c.connectedMutex.Unlock()
+
 				// Unexpected error - check if auto-reconnect is enabled
 				c.reconnectMutex.RLock()
 				shouldReconnect := c.autoReconnect

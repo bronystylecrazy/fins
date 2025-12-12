@@ -229,6 +229,31 @@ go func() {
 }()
 ```
 
+### How Operations Behave During Reconnection
+
+When auto-reconnect is enabled and the connection fails:
+
+1. **Read/Write operations will wait** for the connection to be restored
+2. Operations respect the **context timeout** - if the context expires before reconnection completes, the operation returns with `context.DeadlineExceeded`
+3. If reconnection fails (max retries reached), operations will return an error
+
+```go
+client.EnableAutoReconnect(5, 1*time.Second)
+
+// This operation will wait up to 10 seconds for connection to be restored
+ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+defer cancel()
+
+data, err := client.ReadWords(ctx, fins.MemoryAreaDMWord, 100, 5)
+if err == context.DeadlineExceeded {
+    log.Println("Operation timed out waiting for connection")
+} else if err != nil {
+    log.Printf("Read failed: %v", err)
+} else {
+    log.Printf("Read successful: %v", data)
+}
+```
+
 ## Context Support
 
 All Read/Write methods now accept `context.Context` as their first parameter. This gives you:
