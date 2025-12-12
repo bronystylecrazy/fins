@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	DEFAULT_RESPONSE_TIMEOUT = 20 // ms
+	DEFAULT_RESPONSE_TIMEOUT = 1000 // ms
 	READ_BUFFER_SIZE         = 2048
 	DEFAULT_READ_TIMEOUT     = 5 * time.Second
 	MAX_SERVICE_ID_COUNT     = 256 // Maximum service IDs (byte range: 0-255)

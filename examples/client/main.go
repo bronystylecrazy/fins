@@ -97,7 +97,9 @@ func main() {
 	localUnit := flag.Int("local-unit", 0, "Local FINS unit address")
 
 	timeout := flag.Duration("timeout", 5*time.Second, "Per-command timeout")
+	respTimeout := flag.Uint("resp-timeout-ms", 1000, "FINS response timeout in milliseconds (0 = wait indefinitely)")
 	execOnce := flag.String("exec", "", "Execute a single command (quoted) and exit (e.g., \"readwords dm 100 3\")")
+	execInterval := flag.Duration("exec-interval", 0, "If set with -exec, repeat the command with this interval (e.g., 500ms)")
 	format := flag.String("format", "text", "Output format: text|json")
 	quiet := flag.Bool("quiet", false, "Quiet output (suppress info, show only command output)")
 	flag.Parse()
@@ -149,6 +151,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to create client: %v", err)
 	}
+	client.SetTimeoutMs(*respTimeout)
 	defer client.Close()
 
 	log.Printf("Connected to PLC %s (net=%d node=%d unit=%d) from local net=%d node=%d unit=%d",
@@ -166,17 +169,25 @@ func main() {
 			log.Fatalf("no command provided to -exec")
 		}
 		cmd := strings.ToLower(fields[0])
-		ctx, cancel := context.WithTimeout(context.Background(), *timeout)
-		err := handleCommand(ctx, out, client, cmd, fields[1:])
-		cancel()
-		if err != nil {
-			if out.quiet {
-				out.printError(err)
-				os.Exit(1)
+		for {
+			ctx, cancel := context.WithTimeout(context.Background(), *timeout)
+			err := handleCommand(ctx, out, client, cmd, fields[1:])
+			cancel()
+			if err != nil {
+				if out.quiet {
+					out.printError(err)
+				} else {
+					log.Printf("error: %v", err)
+				}
 			}
-			log.Fatalf("error: %v", err)
+			if *execInterval <= 0 {
+				if err != nil && out.quiet {
+					os.Exit(1)
+				}
+				return
+			}
+			time.Sleep(*execInterval)
 		}
-		return
 	}
 
 	line := liner.NewLiner()

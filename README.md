@@ -111,7 +111,8 @@ go run ./examples/client \
   -remote-host 127.0.0.1 \
   -remote-port 9600 \
   -remote-node 10 \
-  -local-node 2
+  -local-node 2 \
+  -resp-timeout-ms 1000
 
 # One-shot command (no prompt)
 go run ./examples/client \
@@ -120,8 +121,17 @@ go run ./examples/client \
   -remote-node 10 \
   -exec "readwords dm 100 3" \
   -format json \
-  -quiet
-```
+  -quiet \
+  -resp-timeout-ms 1000
+
+# Loop a single command every 500ms
+go run ./examples/client \
+  -remote-host 127.0.0.1 \
+  -remote-port 9600 \
+  -remote-node 10 \
+  -exec "readwords dm 100 3" \
+  -exec-interval 500ms
+``` 
 
 Once running, try commands such as:
 - `readwords dm 100 3`
