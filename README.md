@@ -71,6 +71,26 @@ func main() {
         log.Printf("Write error: %v", err)
     }
 }
+
+## Examples
+
+Run the built-in PLC simulator with configurable addressing:
+
+```bash
+go run ./examples/server \
+  -host 0.0.0.0 \
+  -port 9600 \
+  -network 0 \
+  -node 10 \
+  -unit 0
+```
+
+Available flags:
+- `-host` UDP host/IP to bind (default `127.0.0.1`)
+- `-port` UDP port for the PLC simulator (default `9600`)
+- `-network` FINS network number (default `0`)
+- `-node` FINS node address (default `10`)
+- `-unit` FINS unit address (default `0`)
 ```
 
 ## Critical Fixes
