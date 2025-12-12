@@ -2,6 +2,12 @@
 
 This is an improved version of [gofins](https://github.com/l1va/gofins) with critical bug fixes, context support, and various enhancements that make it production-ready.
 
+## Installation
+
+```bash
+go get github.com/bronystylecrazy/fins@latest
+```
+
 ## Why This Version Exists
 
 The original [gofins](https://github.com/l1va/gofins) had several critical issues that made it unsuitable for production use:
