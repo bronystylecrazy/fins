@@ -1,4 +1,4 @@
-package finsv2
+package fins
 
 import (
 	"bufio"
@@ -15,6 +15,10 @@ const (
 	DEFAULT_RESPONSE_TIMEOUT = 20 // ms
 	READ_BUFFER_SIZE         = 2048
 	DEFAULT_READ_TIMEOUT     = 5 * time.Second
+	MAX_SERVICE_ID_COUNT     = 256 // Maximum service IDs (byte range: 0-255)
+	ERROR_CHANNEL_BUFFER     = 1   // Buffer size for error channels
+	RESPONSE_CHANNEL_BUFFER  = 1   // Buffer size for response channels
+	CLOSE_TIMEOUT            = 1 * time.Second
 )
 
 // Client Omron FINS client
@@ -44,7 +48,7 @@ func NewClient(localAddr, plcAddr Address) (*Client, error) {
 	c.responseTimeoutMs = DEFAULT_RESPONSE_TIMEOUT
 	c.readTimeout = DEFAULT_READ_TIMEOUT
 	c.byteOrder = binary.BigEndian
-	c.listenErr = make(chan error, 1)
+	c.listenErr = make(chan error, ERROR_CHANNEL_BUFFER)
 	c.done = make(chan struct{})
 
 	conn, err := net.DialUDP("udp", localAddr.UdpAddress, plcAddr.UdpAddress)
@@ -53,7 +57,7 @@ func NewClient(localAddr, plcAddr Address) (*Client, error) {
 	}
 	c.conn = conn
 
-	c.resp = make([]chan response, 256) // storage for all responses, sid is byte - only 256 values
+	c.resp = make([]chan response, MAX_SERVICE_ID_COUNT)
 	go c.listenLoop()
 	return c, nil
 }
@@ -101,7 +105,7 @@ func (c *Client) Close() error {
 	// Wait for listen loop to finish or timeout
 	select {
 	case <-c.listenErr:
-	case <-time.After(1 * time.Second):
+	case <-time.After(CLOSE_TIMEOUT):
 	}
 
 	return err
@@ -343,7 +347,7 @@ func (c *Client) incrementSid() byte {
 
 	// Thread-safe channel creation
 	c.respMutex.Lock()
-	c.resp[sid] = make(chan response, 1) // buffered to prevent goroutine leak
+	c.resp[sid] = make(chan response, RESPONSE_CHANNEL_BUFFER)
 	c.respMutex.Unlock()
 
 	return sid

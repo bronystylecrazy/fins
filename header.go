@@ -1,4 +1,4 @@
-package finsv2
+package fins
 
 // Header A FINS frame header
 type Header struct {

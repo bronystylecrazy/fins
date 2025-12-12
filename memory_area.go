@@ -1,4 +1,4 @@
-package finsv2
+package fins
 
 const (
 	// MemoryAreaCIOBit Memory area: CIO area; bit

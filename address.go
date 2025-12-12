@@ -1,4 +1,4 @@
-package finsv2
+package fins
 
 import "net"
 

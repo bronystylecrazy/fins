@@ -1,4 +1,4 @@
-package finsv2
+package fins
 
 import (
 	"encoding/binary"
@@ -7,7 +7,10 @@ import (
 	"sync"
 )
 
-const DM_AREA_SIZE = 32768
+const (
+	DM_AREA_SIZE       = 32768 // Data Memory area size in bytes
+	SERVER_BUFFER_SIZE = 1024  // UDP receive buffer size
+)
 
 // Server Omron FINS server (PLC emulator)
 type Server struct {
@@ -27,7 +30,7 @@ func NewPLCSimulator(plcAddr Address) (*Server, error) {
 	s.addr = plcAddr
 	s.dmarea = make([]byte, DM_AREA_SIZE)
 	s.bitdmarea = make([]byte, DM_AREA_SIZE)
-	s.errChan = make(chan error, 1)
+	s.errChan = make(chan error, ERROR_CHANNEL_BUFFER)
 	s.done = make(chan struct{})
 
 	conn, err := net.ListenUDP("udp", plcAddr.UdpAddress)
@@ -71,7 +74,7 @@ func (s *Server) Close() error {
 func (s *Server) serverLoop() {
 	defer close(s.errChan)
 
-	var buf [1024]byte
+	var buf [SERVER_BUFFER_SIZE]byte
 	for {
 		select {
 		case <-s.done:

@@ -1,19 +1,47 @@
-package finsv2
+package fins
 
 import (
 	"context"
 	"encoding/binary"
 	"math"
+	"net"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 )
 
+// getAvailablePort returns an available port on localhost
+func getAvailablePort(t *testing.T) int {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Failed to get available port: %v", err)
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+	listener.Close()
+	return port
+}
+
+// getTestAddresses returns a pair of available addresses for testing
+func getTestAddresses(t *testing.T) (clientAddr, plcAddr Address) {
+	clientPort := getAvailablePort(t)
+	plcPort := getAvailablePort(t)
+
+	// Ensure ports are different
+	if clientPort == plcPort {
+		plcPort = getAvailablePort(t)
+	}
+
+	clientAddr = NewAddress("127.0.0.1", clientPort, 0, 2, 0)
+	plcAddr = NewAddress("127.0.0.1", plcPort, 0, 10, 0)
+
+	t.Logf("Using client port %d, PLC port %d", clientPort, plcPort)
+	return
+}
+
 func TestFinsClient(t *testing.T) {
 	ctx := context.Background()
-	clientAddr := NewAddress("", 9600, 0, 2, 0)
-	plcAddr := NewAddress("", 9601, 0, 10, 0)
+	clientAddr, plcAddr := getTestAddresses(t)
 
 	toWrite := []uint16{5, 4, 3, 2, 1}
 
@@ -90,8 +118,7 @@ func TestFinsClient(t *testing.T) {
 
 func TestClientClosed(t *testing.T) {
 	ctx := context.Background()
-	clientAddr := NewAddress("", 9602, 0, 2, 0)
-	plcAddr := NewAddress("", 9603, 0, 10, 0)
+	clientAddr, plcAddr := getTestAddresses(t)
 
 	s, e := NewPLCSimulator(plcAddr)
 	if e != nil {
@@ -117,8 +144,7 @@ func TestClientClosed(t *testing.T) {
 }
 
 func TestContextCancellation(t *testing.T) {
-	clientAddr := NewAddress("", 9604, 0, 2, 0)
-	plcAddr := NewAddress("", 9605, 0, 10, 0)
+	clientAddr, plcAddr := getTestAddresses(t)
 
 	s, e := NewPLCSimulator(plcAddr)
 	if e != nil {
@@ -146,8 +172,7 @@ func TestContextCancellation(t *testing.T) {
 }
 
 func TestContextCancellationImmediate(t *testing.T) {
-	clientAddr := NewAddress("", 9606, 0, 2, 0)
-	plcAddr := NewAddress("", 9607, 0, 10, 0)
+	clientAddr, plcAddr := getTestAddresses(t)
 
 	s, e := NewPLCSimulator(plcAddr)
 	if e != nil {
@@ -173,8 +198,7 @@ func TestContextCancellationImmediate(t *testing.T) {
 
 func TestContextWithTimeout(t *testing.T) {
 	ctx := context.Background()
-	clientAddr := NewAddress("", 9608, 0, 2, 0)
-	plcAddr := NewAddress("", 9609, 0, 10, 0)
+	clientAddr, plcAddr := getTestAddresses(t)
 
 	s, e := NewPLCSimulator(plcAddr)
 	if e != nil {

@@ -1,4 +1,4 @@
-package finsv2
+package fins
 
 const (
 	// CommandCodeMemoryAreaRead Command code: IO memory area read
