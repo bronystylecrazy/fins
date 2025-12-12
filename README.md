@@ -1,4 +1,4 @@
-# FINS v2 - Improved Omron FINS Protocol Implementation
+# FINS - Improved Omron FINS Protocol Implementation
 
 This is an improved version of [gofins](https://github.com/l1va/gofins) with critical bug fixes, context support, and various enhancements that make it production-ready.
 
