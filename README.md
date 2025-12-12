@@ -92,6 +92,18 @@ Available flags:
 - `-node` FINS node address (default `10`)
 - `-unit` FINS unit address (default `0`)
 
+Install and control the simulator as a service (cross-platform via `github.com/kardianos/service`):
+
+```bash
+# Install with current flags baked into the service
+go run ./examples/server install -host 0.0.0.0 -port 9600 -node 10
+# Start/stop/restart/uninstall
+go run ./examples/server start
+go run ./examples/server stop
+go run ./examples/server restart
+go run ./examples/server uninstall
+```
+
 Chat-style interactive client (auto-detects local host/port if unset):
 
 ```bash
