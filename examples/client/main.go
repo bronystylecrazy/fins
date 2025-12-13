@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bronystylecrazy/fins"
+	fins "github.com/bronystylecrazy/gofins"
 	"github.com/peterh/liner"
 )
 
