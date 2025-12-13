@@ -288,6 +288,14 @@ func (c *Client) reconnect() error {
 			}
 		}
 
+		// Close the existing connection before re-dialing to free the local UDP port.
+		// Without this, re-dialing with the same local port will fail with EADDRINUSE,
+		// leaving the client stuck until it is restarted.
+		if c.conn != nil {
+			c.conn.Close()
+			c.conn = nil
+		}
+
 		// Attempt to reconnect
 		conn, err := net.DialUDP("udp", c.localAddr, c.remoteAddr)
 		if err != nil {
@@ -308,6 +316,9 @@ func (c *Client) reconnect() error {
 		c.connected = make(chan struct{})
 		close(c.connected)
 		c.connectedMutex.Unlock()
+
+		// Use a fresh error channel for the new listener
+		c.listenErr = make(chan error, ERROR_CHANNEL_BUFFER)
 
 		// Restart listen loop
 		go c.listenLoop()
@@ -689,7 +700,8 @@ func (c *Client) sendCommand(ctx context.Context, command []byte) (*response, er
 }
 
 func (c *Client) listenLoop() {
-	defer close(c.listenErr)
+	errChan := c.listenErr
+	defer close(errChan)
 
 	// Create bufio.Reader once, not on each iteration (FIX: resource leak)
 	reader := bufio.NewReader(c.conn)
@@ -728,7 +740,7 @@ func (c *Client) listenLoop() {
 					reconnectErr := c.reconnect()
 					if reconnectErr != nil {
 						// Reconnection failed, send error
-						c.listenErr <- fmt.Errorf("reconnection failed: %w (original error: %v)", reconnectErr, err)
+						errChan <- fmt.Errorf("reconnection failed: %w (original error: %v)", reconnectErr, err)
 						return
 					}
 					// Successfully reconnected, exit this listen loop
@@ -738,7 +750,7 @@ func (c *Client) listenLoop() {
 
 				// Auto-reconnect disabled or client closed
 				if !c.IsClosed() {
-					c.listenErr <- fmt.Errorf("listen loop error: %w", err)
+					errChan <- fmt.Errorf("listen loop error: %w", err)
 				}
 				return
 			}
