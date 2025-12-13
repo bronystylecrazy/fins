@@ -1,11 +1,11 @@
-# FINS - Improved Omron FINS Protocol Implementation
+# GOFINS - Improved Omron FINS Protocol Implementation
 
 This is an improved version of [gofins](https://github.com/l1va/gofins) with critical bug fixes, context support, and various enhancements that make it production-ready.
 
 ## Installation
 
 ```bash
-go get github.com/bronystylecrazy/fins@latest
+go get github.com/bronystylecrazy/gofins@latest
 ```
 
 ## Why This Version Exists
