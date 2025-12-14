@@ -458,6 +458,15 @@ stats := watchdog.Stats()
 log.Printf("connected=%v total_downtime=%v last_err=%v", stats.Connected, stats.TotalDowntime, stats.LastDisconnectErr)
 ```
 
+Bulk read coalescer to batch adjacent `ReadWords` requests:
+
+```go
+// Coalesce reads arriving within 5ms, up to 32 contiguous words.
+coalescer := fins.NewBulkReadCoalescer(5*time.Millisecond, 32).WithMaxBatchSize(16)
+// default: interceptors run on the batched read; call WithInterceptors(false) for a raw fast path
+client.Use(coalescer)
+```
+
 ### Validation Interceptor
 
 ```go

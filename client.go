@@ -361,27 +361,7 @@ func (c *Client) ReadWords(ctx context.Context, memoryArea byte, address uint16,
 	}
 
 	result, err := c.invoke(ctx, info, func(ctx context.Context) (interface{}, error) {
-		// Wait for connection to be ready
-		if err := c.waitForConnection(ctx); err != nil {
-			return nil, err
-		}
-
-		if checkIsWordMemoryArea(memoryArea) == false {
-			return nil, IncompatibleMemoryAreaError{memoryArea}
-		}
-		command := readCommand(memAddr(memoryArea, address), readCount)
-		r, e := c.sendCommand(ctx, command)
-		e = checkResponse(r, e)
-		if e != nil {
-			return nil, e
-		}
-
-		data := make([]uint16, readCount)
-		for i := 0; i < int(readCount); i++ {
-			data[i] = c.byteOrder.Uint16(r.data[i*2 : i*2+2])
-		}
-
-		return data, nil
+		return c.readWordsRaw(ctx, memoryArea, address, readCount)
 	})
 
 	if err != nil {
@@ -658,6 +638,31 @@ func checkResponse(r *response, e error) error {
 		return fmt.Errorf("error reported by destination, end code 0x%x", r.endCode)
 	}
 	return nil
+}
+
+// readWordsRaw performs the read without invoking interceptors.
+func (c *Client) readWordsRaw(ctx context.Context, memoryArea byte, address uint16, readCount uint16) ([]uint16, error) {
+	// Wait for connection to be ready
+	if err := c.waitForConnection(ctx); err != nil {
+		return nil, err
+	}
+
+	if checkIsWordMemoryArea(memoryArea) == false {
+		return nil, IncompatibleMemoryAreaError{memoryArea}
+	}
+	command := readCommand(memAddr(memoryArea, address), readCount)
+	r, e := c.sendCommand(ctx, command)
+	e = checkResponse(r, e)
+	if e != nil {
+		return nil, e
+	}
+
+	data := make([]uint16, readCount)
+	for i := 0; i < int(readCount); i++ {
+		data[i] = c.byteOrder.Uint16(r.data[i*2 : i*2+2])
+	}
+
+	return data, nil
 }
 
 func (c *Client) nextHeader() *Header {
