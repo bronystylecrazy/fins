@@ -92,6 +92,11 @@ func NewClient(localAddr, plcAddr Address) (*Client, error) {
 	// Signal that we're connected
 	close(c.connected)
 
+	// Let plugins know the initial connection is ready.
+	if err := c.pm.notifyConnected(c); err != nil {
+		return nil, err
+	}
+
 	return c, nil
 }
 
@@ -236,6 +241,20 @@ func (c *Client) waitForConnection(ctx context.Context) error {
 	}
 }
 
+// isConnected reports whether the connected channel is currently closed.
+func (c *Client) isConnected() bool {
+	c.connectedMutex.Lock()
+	connChan := c.connected
+	c.connectedMutex.Unlock()
+
+	select {
+	case <-connChan:
+		return true
+	default:
+		return false
+	}
+}
+
 // reconnect attempts to reconnect to the PLC with exponential backoff
 func (c *Client) reconnect() error {
 	c.reconnectMutex.Lock()
@@ -322,6 +341,11 @@ func (c *Client) reconnect() error {
 
 		// Restart listen loop
 		go c.listenLoop()
+
+		// Notify plugins
+		if err := c.pm.notifyConnected(c); err != nil {
+			return fmt.Errorf("plugin connect hook failed: %w", err)
+		}
 
 		return nil
 	}
@@ -729,6 +753,11 @@ func (c *Client) listenLoop() {
 				c.connectedMutex.Lock()
 				c.connected = make(chan struct{}) // Create new channel (not closed = not connected)
 				c.connectedMutex.Unlock()
+
+				// Notify plugins about the disconnect
+				if hookErr := c.pm.notifyDisconnected(c, err); hookErr != nil {
+					errChan <- hookErr
+				}
 
 				// Unexpected error - check if auto-reconnect is enabled
 				c.reconnectMutex.RLock()

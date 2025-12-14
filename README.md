@@ -421,6 +421,27 @@ func (loggingPlugin) Initialize(c *fins.Client) error {
 client.Use(&loggingPlugin{}) // duplicate names return an error
 ```
 
+Connection lifecycle hooks are also available via `ConnectionPlugin`:
+
+```go
+type lifecyclePlugin struct{}
+
+func (lifecyclePlugin) Name() string { return "lifecycle" }
+func (lifecyclePlugin) Initialize(c *fins.Client) error { return nil }
+
+func (lifecyclePlugin) OnConnected(c *fins.Client) error {
+    log.Println("connected to PLC")
+    return nil
+}
+
+func (lifecyclePlugin) OnDisconnected(c *fins.Client, err error) error {
+    log.Printf("lost connection: %v", err)
+    return nil
+}
+
+client.Use(&lifecyclePlugin{})
+```
+
 ### Validation Interceptor
 
 ```go

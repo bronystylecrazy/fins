@@ -14,10 +14,20 @@ type Plugin interface {
 	Initialize(*Client) error
 }
 
+// ConnectionPlugin can react to connection lifecycle events.
+// Hooks are invoked synchronously in registration order.
+// Returning an error aborts registration (or reconnection when fired there).
+type ConnectionPlugin interface {
+	Plugin
+	OnConnected(*Client) error
+	OnDisconnected(*Client, error) error
+}
+
 // pluginManager wraps plugin registration to keep the Client struct focused.
 type pluginManager struct {
 	mu      sync.Mutex
 	plugins map[string]Plugin
+	order   []Plugin
 }
 
 func (pm *pluginManager) use(c *Client, plugins ...Plugin) error {
@@ -51,8 +61,50 @@ func (pm *pluginManager) use(c *Client, plugins ...Plugin) error {
 
 		pm.mu.Lock()
 		pm.plugins[name] = p
+		pm.order = append(pm.order, p)
 		pm.mu.Unlock()
+
+		// Fire OnConnected immediately if the client is already connected.
+		if cp, ok := p.(ConnectionPlugin); ok && c.isConnected() {
+			if err := cp.OnConnected(c); err != nil {
+				pm.mu.Lock()
+				delete(pm.plugins, name)
+				pm.order = pm.order[:len(pm.order)-1]
+				pm.mu.Unlock()
+				return fmt.Errorf("plugin %s OnConnected: %w", name, err)
+			}
+		}
 	}
 
+	return nil
+}
+
+func (pm *pluginManager) notifyConnected(c *Client) error {
+	pm.mu.Lock()
+	plugins := append([]Plugin(nil), pm.order...)
+	pm.mu.Unlock()
+
+	for _, p := range plugins {
+		if cp, ok := p.(ConnectionPlugin); ok {
+			if err := cp.OnConnected(c); err != nil {
+				return fmt.Errorf("plugin %s OnConnected: %w", p.Name(), err)
+			}
+		}
+	}
+	return nil
+}
+
+func (pm *pluginManager) notifyDisconnected(c *Client, err error) error {
+	pm.mu.Lock()
+	plugins := append([]Plugin(nil), pm.order...)
+	pm.mu.Unlock()
+
+	for _, p := range plugins {
+		if cp, ok := p.(ConnectionPlugin); ok {
+			if hookErr := cp.OnDisconnected(c, err); hookErr != nil {
+				return fmt.Errorf("plugin %s OnDisconnected: %w", p.Name(), hookErr)
+			}
+		}
+	}
 	return nil
 }
