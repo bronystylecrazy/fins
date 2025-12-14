@@ -92,6 +92,11 @@ reconnection completes, the operation returns with context.DeadlineExceeded:
 Interceptors allow you to add custom logic around all FINS operations.
 Use them for logging, metrics, tracing, validation, retries, and more:
 
+	// Signature: func(ic *fins.InterceptorCtx) (interface{}, error)
+	// - ic.Context() gives you the request context
+	// - ic.Info() returns metadata (operation, address, data, etc.)
+	// - ic.Invoke(ctx) calls the next handler (ctx nil = reuse stored context)
+
 	// Logging interceptor (zap)
 	logger, _ := zap.NewProduction()
 	client.SetInterceptor(fins.LoggingInterceptor(logger))

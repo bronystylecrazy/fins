@@ -358,6 +358,8 @@ if err == context.DeadlineExceeded {
 
 Interceptors allow you to add custom logic around all FINS operations. Similar to gRPC unary interceptors, you can use them for logging, metrics, tracing, validation, retries, and more.
 
+Interceptor signature: `func(ic *fins.InterceptorCtx) (interface{}, error)`. Access the request context via `ic.Context()`, metadata via `ic.Info()`, and call the next handler with `ic.Invoke(ctx)` (pass `nil` to reuse the stored context).
+
 ### Basic Logging Interceptor
 
 ```go
